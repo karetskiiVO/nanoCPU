@@ -1,0 +1,32 @@
+getProgramm ::= { getVar ";" }*  getFunc+  '\0'
+getVar      ::= startVar { "=" getEq }
+startVar    ::= "$" $$varname$$
+getFunc     ::= [ "*" "^"] $$funcname$$ "(" { getVar { "," startVar}* }? ")" getBlock
+getBlock    ::= "{" getLine* "}"
+getLine     ::= getBlock | getIf | getWhile | getVar | startFunc ";" | getReturn
+startFunc   ::= $$funcname$$ "(" { getEq { "," getEq}* }? ")"
+getReturn   ::= 
+getEq       ::=
+
+^a($d, $k){
+    $l;
+    >>d>>k;
+    l = d^k;
+    ^d^k; 
+}
+
+*b(){
+    ^
+}
+
+
+//_{
+//$a = 0; #this is variable
+//>>a;
+//?(a){
+////$b;
+////>>a>>b;
+////b = b+a;
+//}:{
+//<<a^2 - abs(a);
+////}
