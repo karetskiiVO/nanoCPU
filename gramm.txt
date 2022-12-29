@@ -1,12 +1,12 @@
 getProgramm ::= { getVar ";" }*  getFunc+  '\0'
 getVar      ::= startVar { "=" getEq }
 startVar    ::= "$" $$varname$$
-getFunc     ::= [ "*" "^"] $$funcname$$ "(" { getVar { "," startVar}* }? ")" getBlock
+getFunc     ::= ["_" { [ "*" "^"] $$funcname$$ "(" { getVar { "," startVar}* }? ")" }] getLine
 getBlock    ::= "{" getLine* "}"
 getLine     ::= getBlock | getIf | getWhile | getVar | startFunc ";" | getReturn
 startFunc   ::= $$funcname$$ "(" { getEq { "," getEq}* }? ")"
-getReturn   ::= 
-getEq       ::=
+getReturn   ::= ....
+getEq       ::= ....
 
 ^a($d, $k){
     $l;
