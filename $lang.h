@@ -11,6 +11,8 @@ typedef struct block_t {
     char* name;
     List* varlist;
     bool  isfunc;
+    bool  isCall;
+    bool  isVoid;
 } block_t;
 
 typedef struct prog_t {
