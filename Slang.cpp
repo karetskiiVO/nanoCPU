@@ -7,6 +7,7 @@
 
 static vector<block_t> Blocks;
 static vector<vector<var_t>*> Vartable;
+static vector<block_t*> Blocktable;
 
 #define strCpy(org,src) org = (char*)calloc(strlen(src) + 1, sizeof(char)); strcpy(org, src)
 #define checkLex(_lex) (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex))
@@ -168,17 +169,16 @@ vector<block_t> getProgram (char* *ptr) {
     vector<var_t> varglobal;
     block_t globalblock;
     Blocks.push_back(globalblock);
-    
-    strCpy(Blocks[0].name, "global");
 
     Vartable.push_back(&Blocks[0].varlist);
+    Blocktable.push_back(&Blocks[0]);
 
     Blocks[0].body = NULL;
     prog_t** buf = &Blocks[0].body;
     bool isWorking = true;
     while (isWorking) {
         isWorking = false;
-        prog_t* newVar = getVar(ptr, &Blocks[0], Vartable.back());
+        prog_t* newVar = getVar(ptr, &Blocks[0], &(Blocktable.back()->varlist));
 
         if (newVar) {
             isWorking = true;
@@ -236,10 +236,6 @@ static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable) {
 static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable) { 
     return NULL;
 }
-
-
-
-
 
 
 
