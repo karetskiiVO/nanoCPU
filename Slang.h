@@ -41,7 +41,7 @@ struct var_t;
 
 typedef struct block_t {
     prog_t* body;
-    vector<var_t>* varlist;
+    vector<var_t> varlist;
 
     char* name;
     bool isFunc;

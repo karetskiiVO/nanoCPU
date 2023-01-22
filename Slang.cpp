@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 static vector<block_t> Blocks;
-static stack<vector<var_t>> Vartable;
+static vector<vector<var_t>*> Vartable;
 
 #define strCpy(org,src) org = (char*)calloc(strlen(src) + 1, sizeof(char)); strcpy(org, src)
 #define checkLex(_lex) (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex))
@@ -94,8 +94,8 @@ void progDump (vector<block_t> blocklist) {
         fprintf(dmp, "\t\t{\n");
 
         fprintf(dmp, "\t\tvar_struct%ld [label=\"var: ", i);
-        for (size_t j = 0; j < blocklist[i].varlist->size(); j++) {
-            fprintf(dmp, "| %s ", (*blocklist[i].varlist)[j].name); // here
+        for (size_t j = 0; j < blocklist[i].varlist.size(); j++) {
+            fprintf(dmp, "| %s ", blocklist[i].varlist[j].name); // here
         }
         fprintf(dmp, "\"]");
         
@@ -168,17 +168,17 @@ vector<block_t> getProgram (char* *ptr) {
     vector<var_t> varglobal;
     block_t globalblock;
     Blocks.push_back(globalblock);
-    Vartable.push(varglobal);
     
     strCpy(Blocks[0].name, "global");
-    Blocks[0].varlist = &Vartable.top();
+
+    Vartable.push_back(&Blocks[0].varlist);
 
     Blocks[0].body = NULL;
     prog_t** buf = &Blocks[0].body;
     bool isWorking = true;
     while (isWorking) {
         isWorking = false;
-        prog_t* newVar = getVar(ptr, &Blocks[0], &(Vartable.top()));
+        prog_t* newVar = getVar(ptr, &Blocks[0], Vartable.back());
 
         if (newVar) {
             isWorking = true;
