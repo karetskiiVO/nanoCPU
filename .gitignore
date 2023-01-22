@@ -34,3 +34,5 @@
 *.json
 *.d
 *test
+*.png
+*.dot
