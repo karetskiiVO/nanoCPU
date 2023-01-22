@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static vector<block_t> Blocks;
+static stack<vector<var_t>> Vartable;
+
 #define strCpy(org,src) org = (char*)calloc(strlen(src) + 1, sizeof(char)); strcpy(org, src)
 #define checkLex(_lex) (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex))
 #define error()
@@ -78,6 +81,7 @@ vector<block_t> getProgram (char* *ptr);
 static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable);
 
 void progDump (vector<block_t> blocklist) {
     FILE* dmp = fopen("test.dot", "w"); // rewrite this sh!t
@@ -159,23 +163,22 @@ static void progDump_node (prog_t* node, FILE* dmp) {
 }
 
 vector<block_t> getProgram (char* *ptr) {
-    vector<block_t> blocks;
-    static stack<vector<var_t>> vartable;
+    //remove previous results
 
     vector<var_t> varglobal;
     block_t globalblock;
-    blocks.push_back(globalblock);
-    vartable.push(varglobal);
+    Blocks.push_back(globalblock);
+    Vartable.push(varglobal);
     
-    strCpy(blocks[0].name, "global");
-    blocks[0].varlist = &vartable.top();
+    strCpy(Blocks[0].name, "global");
+    Blocks[0].varlist = &Vartable.top();
 
-    blocks[0].body = NULL;
-    prog_t** buf = &blocks[0].body;
+    Blocks[0].body = NULL;
+    prog_t** buf = &Blocks[0].body;
     bool isWorking = true;
     while (isWorking) {
         isWorking = false;
-        prog_t* newVar = getVar(ptr, &blocks[0], &(vartable.top()));
+        prog_t* newVar = getVar(ptr, &Blocks[0], &(Vartable.top()));
 
         if (newVar) {
             isWorking = true;
@@ -185,7 +188,7 @@ vector<block_t> getProgram (char* *ptr) {
         }
     }
     
-    return blocks;
+    return Blocks;
 }
 
 static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
@@ -227,6 +230,16 @@ static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
 }
 
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    return NULL; // end
+    return getSum(ptr, block, vartable);
+} 
+
+static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable) { 
+    return NULL;
 }
+
+
+
+
+
+
 
