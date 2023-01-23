@@ -98,6 +98,7 @@ static prog_t* getBrk (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable);
 
 void progDump (vector<block_t> blocklist) {
+    //printf("ok\n");
     FILE* dmp = fopen("test.dot", "w"); // rewrite this sh!t
     fprintf(dmp, "digraph g {\n");
     
@@ -210,14 +211,14 @@ static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     char* newVarName = startVar(ptr, block, vartable);
     if (!newVarName) return NULL;
 
-    prog_t* eq;
+    prog_t* eq = NULL;
     skipSpaces(ptr);
     if (checkLex("=")) {
-        eq = getEq(ptr, block, vartable);
+        eq = getEq(ptr, block, vartable); /// PROBLEM
     } else {
         eq = newNodeNum(0);
     }
-
+    
     skipSpaces(ptr);
     if (checkLex(";"));
     else return NULL;
@@ -227,14 +228,14 @@ static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     skipSpaces(ptr);
     char* varname = (char*)calloc(1000, sizeof(char));
-    int len;
+    size_t len;
 
     if (checkLex("$"));
     else return NULL;
 
     skipSpaces(ptr);
     
-    sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%n", varname, &len); //here len = 0(?) ATTENTION
+    sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", varname, &len); //here len = 0(?) ATTENTION
     len = strlen(varname);
     *ptr = *ptr + len;
     if (!vectorSearch(vartable, varname)) error();
@@ -340,18 +341,20 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
     char* name = (char*)calloc(1000, sizeof(char));
 
     if (sscanf(*ptr, "%lg%ln", &num, &len)) {
+        *ptr += len;
         return newNodeNum(num);
     }
 
-    sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%n", name, &len); // attention
+    sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+    len = strlen(name);
     *ptr += len;
     skipSpaces(ptr);
 
-    if (checkLex("(")) {
+    if (checkLex("(")) { // ATTENTION
         bool isDeclarated = false;
         size_t funcind = 0;
 
-        for (int i = 0; i < Blocks.size(); i++) {
+        for (size_t i = 0; i < Blocks.size(); i++) {
             if (!strcmp(Blocks[i].name, name)) {
                 isDeclarated = true;
                 funcind = i;
@@ -362,7 +365,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
 
         prog_t** buf = &ret;
 
-        for (int i = 0; i < Blocks[funcind].varlist.size(); i++) {
+        for (size_t i = 0; i < Blocks[funcind].varlist.size(); i++) {
             if (i == 0) {
                 skipSpaces(ptr);
                 *buf = newNodeEmpty(getEq(ptr, block, vartable), NULL);
@@ -387,10 +390,10 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
     } else {
         bool isDeclarated = false;
 
-        for (int i = Blocktable.size() - 1; i >= 0; i--) {
-            if (vectorSearch(&Blocktable[i]->varlist, name)) {
-                isDeclarated = true;
+        for (size_t i = Blocktable.size() - 1; i + 1 > 0; i--) {
+            if (vectorSearch(&(Blocktable[i]->varlist), name)) {
                 ret = newNodeVar(name);
+                isDeclarated = true;
                 ret->number  = i;
             }
         }
