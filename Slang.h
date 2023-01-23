@@ -46,12 +46,13 @@ typedef struct block_t {
     char* name;
     bool isFunc;
     bool isRet;
+    size_t argnum;
 } block_t;
 
 typedef struct prog_t {
     double num;
     char* varname;
-    block_t* block;
+    size_t number;
     CODE_TYPE node_type;
     COP_TYPE op_type;
 
