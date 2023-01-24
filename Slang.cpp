@@ -193,14 +193,16 @@ vector<block_t> getProgram (char* *ptr) {
     bool isWorking = true;
     while (isWorking) {
         isWorking = false;
-        prog_t* newVar = getVar(ptr, &Blocks[0], &(Blocktable.back()->varlist));
 
+        prog_t* newVar = getVar(ptr, &Blocks[0], &(Blocktable.back()->varlist));
         if (newVar) {
             isWorking = true;
 
             *buf = newNodeEmpty(newVar, NULL);
             buf = &((*buf)->right);
         }
+
+        prog_t* newFnc = getFnc(ptr);
     }
     
     return Blocks;
@@ -385,6 +387,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
 
         ret = newNodeCll(funcind, ret);
 
+        free(name);
         if (checkLex(")")) return ret;
         else error();
     } else {
@@ -398,8 +401,64 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
             }
         }
 
+        free(name);
         if (!isDeclarated) error();
     }
 
     return ret;
 }
+
+static prog_t* getFnc (char* *ptr) {
+    skipSpaces(ptr);
+
+    prog_t* ret = NULL;
+    block_t fnc = {0};
+    size_t len  = 0;
+    char*  name = (char*)calloc(1000, sizeof(char));
+
+    if (checkLex("_")) {
+        skipSpaces(ptr);
+        strCpy(fnc.name, "_main");
+
+        fnc.isFunc = true;
+        fnc.isRet  = false;
+        fnc.argnum = 0;
+    } else if (checkLex("^")) {
+        skipSpaces(ptr);
+        sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+        len = strlen(name);
+        *ptr += len;
+        strCpy(fnc.name, name);
+        free(name);
+        skipSpaces(ptr);
+
+        fnc.isFunc = true;
+        fnc.isRet  = true;    
+    } else if (checkLex("*")) {
+        skipSpaces(ptr);
+        sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+        len = strlen(name);
+        *ptr += len;
+        strCpy(fnc.name, name);
+        free(name);
+        skipSpaces(ptr);
+
+        fnc.isFunc = true;
+        fnc.isRet  = false;
+    } else {
+        free(name);
+        return ret;
+    }
+
+    if (strcmp(fnc.name, "_main")) {
+        // start here
+        char* arg = startVar(ptr, &fnc, &fnc.varlist);
+
+    }
+
+
+    return ret;
+}
+
+
+
