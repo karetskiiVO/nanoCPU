@@ -7,7 +7,7 @@
 int main () {
     FILE* file = fopen("code.txt", "r");
     char* code = (char*)calloc(10000, sizeof(char));
-    strcpy(code, "$aboba = 2; $b = 1 + aboba;");
+    strcpy(code, "$aboba = 1; $boba = aboba;");
     /*Work:
         $aboba;
         $boba = aboba;
