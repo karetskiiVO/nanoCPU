@@ -5,9 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static vector<block_t> Blocks;
+static vector<block_t> Blocks; // vector of blocks
 //static vector<vector<var_t>*> Vartable;
-static vector<block_t*> Blocktable;
+static vector<block_t*> Blocktable; // stack of now blocks
 
 #define debugprint printf("%s\t%s\n", __PRETTY_FUNCTION__, *ptr)
 #define strCpy(org,src) org = (char*)calloc(strlen(src) + 1, sizeof(char)); strcpy(org, src)
@@ -88,7 +88,7 @@ static size_t skipSpaces (char* *ptr) {
 static void progDump_edge (prog_t* node, FILE* dmp);
 static const char* dump_operation (COP_TYPE type);
 static void progDump_node (prog_t* node, FILE* dmp);
-vector<block_t> getProgram (char* *ptr);
+vector<block_t> getProgramm (char* *ptr);
 static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable);
@@ -177,7 +177,7 @@ static void progDump_node (prog_t* node, FILE* dmp) {
     if (node->right) progDump_node(node->right, dmp);
 }
 
-vector<block_t> getProgram (char* *ptr) {
+vector<block_t> getProgramm (char* *ptr) {
     Blocks.clear();
     Blocktable.clear();
 
@@ -420,7 +420,7 @@ static prog_t* getFnc (char* *ptr) {
 
     if (checkLex("_")) {
         skipSpaces(ptr);
-        strCpy(fnc.name, "_main");
+        strcpy(name, "_name");
 
         fnc.isFunc = true;
         fnc.isRet  = false;
@@ -430,8 +430,6 @@ static prog_t* getFnc (char* *ptr) {
         sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
         len = strlen(name);
         *ptr += len;
-        strCpy(fnc.name, name);
-        free(name);
         skipSpaces(ptr);
 
         fnc.isFunc = true;
@@ -441,8 +439,6 @@ static prog_t* getFnc (char* *ptr) {
         sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
         len = strlen(name);
         *ptr += len;
-        strCpy(fnc.name, name);
-        free(name);
         skipSpaces(ptr);
 
         fnc.isFunc = true;
@@ -451,6 +447,14 @@ static prog_t* getFnc (char* *ptr) {
         free(name);
         return ret;
     }
+
+    size_t funcind = 0;
+    for (size_t i = 0; i < Blocks.size(); i++) {
+        if (!strcpy(Blocks[i].name, fnc.name)) {
+
+        }
+    }
+    strCpy(fnc.name, name);
 
     if (strcmp(fnc.name, "_main")) {
         // start here
