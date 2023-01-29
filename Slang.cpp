@@ -61,7 +61,7 @@ static prog_t* newNodeCll (size_t funcind, prog_t* args) {
     prog_t* ret = (prog_t*)calloc(1, sizeof(prog_t));
     ret->node_type = CODE_block;
     ret->left = args;
-    ret->number = funcind;
+    ret->ind = funcind;
 
     return ret;
 }
@@ -88,7 +88,7 @@ static size_t skipSpaces (char* *ptr) {
 static void progDump_edge (prog_t* node, FILE* dmp);
 static const char* dump_operation (COP_TYPE type);
 static void progDump_node (prog_t* node, FILE* dmp);
-vector<block_t> getProgramm (char* *ptr);
+static vector<block_t> getProgramm (char* *ptr);
 static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable);
@@ -97,6 +97,7 @@ static prog_t* getMul (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getPow (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getBrk (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable);
+static bool getFnc (char* *ptr);
 
 void progDump (vector<block_t> blocklist) {
     FILE* dmp = fopen("test.dot", "w"); // rewrite this sh!t
@@ -112,12 +113,11 @@ void progDump (vector<block_t> blocklist) {
         for (size_t j = 0; j < blocklist[i].varlist.size(); j++) {
             fprintf(dmp, "| %s ", blocklist[i].varlist[j].name); // here
         }
-        fprintf(dmp, "\"]");
+        fprintf(dmp, "\"]\n");
         
         progDump_node(blocklist[i].body, dmp);
         fprintf(dmp, "\t\t}\n");
-        fprintf(dmp, "\t\tvar_struct%ld -> struct%p\n", i, blocklist[i].body);
-
+        if (blocklist[i].body) fprintf(dmp, "\t\tvar_struct%ld -> struct%p\n", i, blocklist[i].body);
         progDump_edge(blocklist[i].body, dmp);
         
         fprintf(dmp, "\t}\n");
@@ -128,9 +128,10 @@ void progDump (vector<block_t> blocklist) {
 }
 
 static void progDump_edge (prog_t* node, FILE* dmp) {
+    if (!node) return;
+
     if (node->left)  fprintf(dmp, "\t\tstruct%p -> struct%p\n", node, node->left);
     if (node->right) fprintf(dmp, "\t\tstruct%p -> struct%p\n", node, node->right);
-
 
     if (node->left)  progDump_edge(node->left,  dmp);
     if (node->right) progDump_edge(node->right, dmp);
@@ -155,9 +156,11 @@ static const char* dump_operation (COP_TYPE type) {
 }  
 
 static void progDump_node (prog_t* node, FILE* dmp) {
+    if (!node) return;
+
     switch (node->node_type) {
         case CODE_block:
-            fprintf(dmp, "\t\t\tstruct%p [label=\"  \"]\n", node); // switch
+            fprintf(dmp, "\t\t\tstruct%p [label=\" block_%ld \"]\n", node, node->ind); // switch
             break;
         case CODE_e:
             fprintf(dmp, "\t\t\tstruct%p [label=\" E \"]\n", node);
@@ -177,14 +180,109 @@ static void progDump_node (prog_t* node, FILE* dmp) {
     if (node->right) progDump_node(node->right, dmp);
 }
 
-vector<block_t> getProgramm (char* *ptr) {
-    Blocks.clear();
-    Blocktable.clear();
+static void seekFnc (char* *ptr) {
+    char* name = (char*)calloc(1000, sizeof(char));
+    while (**ptr != '\0') {
+        
+        prog_t* ret = NULL;
+        block_t fnc = {0};
+        size_t len  = 0;
 
+        if (checkLex("_")) {
+            skipSpaces(ptr);
+            strcpy(name, "_main");
+
+            fnc.isFunc = true;
+            fnc.isRet  = false;
+            fnc.argnum = 0;
+        } else if (checkLex("^")) {
+            skipSpaces(ptr);
+            sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
+            len = strlen(name);
+            *ptr += len;
+            skipSpaces(ptr);
+
+            fnc.isFunc = true;
+            fnc.isRet  = true;    
+        } else if (checkLex("*")) {
+            skipSpaces(ptr);
+            sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
+            len = strlen(name);
+            *ptr += len;
+            skipSpaces(ptr);
+
+            fnc.isFunc = true;
+            fnc.isRet  = false;
+        } else {
+            (*ptr)++;
+            continue;
+        }
+
+        bool isDeclarated = false;
+        strCpy(fnc.name, name);
+        for (size_t i = 0; i < Blocks.size(); i++) {
+            if (Blocks[i].isFunc && !strcmp(Blocks[i].name, fnc.name)) {
+                isDeclarated = true;
+            }
+        }
+        if (isDeclarated) error();
+        
+
+        if (checkLex("(")) ;
+        else error();
+
+        bool isWorking = true;
+        while (isWorking) {
+            skipSpaces(ptr);
+            if (checkLex(")")) {
+                isWorking = false;
+                break;
+            } else if (checkLex(",")) {
+                skipSpaces(ptr);
+                fnc.argnum++;
+                *ptr = strpbrk(*ptr ," =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n");
+            } else if (checkLex("$")) {
+                fnc.argnum++;
+                skipSpaces(ptr);
+                *ptr = strpbrk(*ptr ," =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n");
+            } else error();
+        }
+        
+        
+        skipSpaces(ptr);
+        if (checkLex("{")) {
+            int num = 1;
+            while (num) {
+                if (checkLex("{")) {
+                    num++;
+                } else if (checkLex("}")) {
+                    num--;
+                } else {
+                    (*ptr)++;
+                }
+            }
+            
+        } else error();
+        Blocks.push_back(fnc);
+    }
+        
+}
+
+vector<block_t> Compile (char* code) {
     vector<var_t> varglobal;
     block_t globalblock;
+    globalblock.isFunc = false;
+    globalblock.isRet  = false;
+    globalblock.argnum = 0;
+    strCpy(globalblock.name, "global");
     Blocks.push_back(globalblock);
 
+    char* buf = code;
+    seekFnc(&code);
+    return getProgramm(&buf);
+}
+
+static vector<block_t> getProgramm (char* *ptr) {
     //Vartable.push_back(&Blocks[0].varlist);
     Blocktable.push_back(&Blocks[0]);
 
@@ -202,7 +300,9 @@ vector<block_t> getProgramm (char* *ptr) {
             buf = &((*buf)->right);
         }
 
-        prog_t* newFnc = getFnc(ptr);
+        if (getFnc(ptr)) {
+            isWorking = true;
+        }
     }
     
     return Blocks;
@@ -217,7 +317,6 @@ static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     skipSpaces(ptr);
     if (checkLex("=")) {
         eq = getEq(ptr, block, vartable); /// PROBLEM
-        printf(">%p\n", eq);
     } else {
         eq = newNodeNum(0);
     }
@@ -349,7 +448,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         return newNodeNum(num);
     }
 
-    sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+    sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
     len = strlen(name);
     *ptr += len;
     skipSpaces(ptr);
@@ -359,7 +458,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         size_t funcind = 0;
 
         for (size_t i = 0; i < Blocks.size(); i++) {
-            if (!strcmp(Blocks[i].name, name)) {
+            if (Blocks[i].isFunc && !strcmp(Blocks[i].name, name)) {
                 isDeclarated = true;
                 funcind = i;
             }
@@ -399,7 +498,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
             if (vectorSearch(&(Blocktable[i]->varlist), name)) {
                 ret = newNodeVar(name);
                 isDeclarated = true;
-                ret->number  = i;
+                ret->ind  = i;
             }
         }
 
@@ -410,10 +509,10 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
     return ret;
 }
 
-static prog_t* getFnc (char* *ptr) {
+static bool getFnc (char* *ptr) {
+    return NULL;
     skipSpaces(ptr);
 
-    prog_t* ret = NULL;
     block_t fnc = {0};
     size_t len  = 0;
     char*  name = (char*)calloc(1000, sizeof(char));
@@ -427,7 +526,7 @@ static prog_t* getFnc (char* *ptr) {
         fnc.argnum = 0;
     } else if (checkLex("^")) {
         skipSpaces(ptr);
-        sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+        sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
         len = strlen(name);
         *ptr += len;
         skipSpaces(ptr);
@@ -436,7 +535,7 @@ static prog_t* getFnc (char* *ptr) {
         fnc.isRet  = true;    
     } else if (checkLex("*")) {
         skipSpaces(ptr);
-        sscanf(*ptr, "%[^=-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n ]%ln", name, &len); // attention
+        sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
         len = strlen(name);
         *ptr += len;
         skipSpaces(ptr);
@@ -445,26 +544,49 @@ static prog_t* getFnc (char* *ptr) {
         fnc.isRet  = false;
     } else {
         free(name);
-        return ret;
+        return false;
     }
+
+    strCpy(fnc.name, name);
 
     size_t funcind = 0;
     for (size_t i = 0; i < Blocks.size(); i++) {
-        if (!strcpy(Blocks[i].name, fnc.name)) {
-
+        if (Blocks[i].isFunc && !strcmp(Blocks[i].name, fnc.name)) {
+            funcind = i;
         }
     }
-    strCpy(fnc.name, name);
+    
+    if (!funcind) error();
 
-    if (strcmp(fnc.name, "_main")) {
-        // start here
-        char* arg = startVar(ptr, &fnc, &fnc.varlist);
+    skipSpaces(ptr);
+    if (checkLex("(")) ;
+    else error();
 
+    for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
+        if (startVar(ptr, &Blocks[funcind], &Blocks[funcind].varlist));
+        else error();
+
+        skipSpaces(ptr);
+        if ((i != Blocks[funcind].argnum - 1) && checkLex(","));
+        else error(); 
     }
 
+    skipSpaces(ptr);
+    if (checkLex(")")) ;
+    else error();
 
-    return ret;
+    skipSpaces(ptr);
+    if (checkLex("{")) ;
+    else error();
+
+    //
+
+    skipSpaces(ptr);
+    if (checkLex("}")) ;
+    else error();
+
+    Blocktable.push_back(&Blocks[funcind]);
+
+    return true;
 }
-
-
 

@@ -52,7 +52,7 @@ typedef struct block_t {
 typedef struct prog_t {
     double num;
     char* varname;
-    size_t number;
+    size_t ind;
     CODE_TYPE node_type;
     COP_TYPE op_type;
 
@@ -66,6 +66,6 @@ typedef struct var_t {
 
 void progDump (vector<block_t> blocklist);
 
-vector<block_t> getProgram (char* *ptr);
+vector<block_t> Compile (char* code);
 
 #endif

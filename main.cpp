@@ -7,15 +7,8 @@
 int main () {
     FILE* file = fopen("code.txt", "r");
     char* code = (char*)calloc(10000, sizeof(char));
-    strcpy(code, "$aboba = 1; $boba = aboba;");
-    /*Work:
-        $aboba;
-        $boba = aboba;
-      Don't work
-        $aboba = 2;
-        $boba = aboba;
-    */
-    //getProgram(&code);
-    progDump(getProgram(&code));
+    strcpy(code, "$boba = aboba(1,2); _(){} ^aboba($a, $b){}");
+   
+    progDump(Compile(code));
     return 0;
 }
