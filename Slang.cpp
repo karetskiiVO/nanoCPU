@@ -14,6 +14,17 @@ static vector<block_t*> Blocktable; // stack of now blocks
 #define checkLex(_lex) (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex))
 #define error()
 
+static int scanString (char* *origin, char* str, const char* ignore) {
+    size_t len = strpbrk(*origin, ignore) - *origin;
+    strncpy(str, *origin, len);
+    str[len] = '\0';
+
+    (*origin) += len;
+
+    if (len) return 1;
+    return 0;
+}
+
 static var_t getVar_t (const char* name) {
     var_t ret;
     ret.name = NULL;
@@ -57,6 +68,15 @@ static prog_t* newNodeCop (COP_TYPE type, prog_t* left, prog_t* right) {
     return ret;
 }
 
+static prog_t* newNodeCode (CODE_TYPE type, prog_t* left, prog_t* right) {
+    prog_t* ret = (prog_t*)calloc(1, sizeof(prog_t));
+    ret->node_type = type;
+    ret->left  = left;
+    ret->right = right;
+
+    return ret;
+}
+
 static prog_t* newNodeCll (size_t funcind, prog_t* args) {
     prog_t* ret = (prog_t*)calloc(1, sizeof(prog_t));
     ret->node_type = CODE_block;
@@ -92,12 +112,17 @@ static vector<block_t> getProgramm (char* *ptr);
 static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getAsgn (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getMul (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getPow (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getBrk (char* *ptr, block_t* block, vector<var_t>* vartable);
 static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable);
 static bool getFnc (char* *ptr);
+static prog_t* getLine (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getEqL (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getIf (char* *ptr, block_t* block, vector<var_t>* vartable);
 
 void progDump (vector<block_t> blocklist) {
     FILE* dmp = fopen("test.dot", "w"); // rewrite this sh!t
@@ -174,6 +199,9 @@ static void progDump_node (prog_t* node, FILE* dmp) {
         case CODE_var:
             fprintf(dmp, "\t\t\tstruct%p [label=\" %s \"]\n", node, node->varname);
             break;
+        case CODE_if:
+            fprintf(dmp, "\t\t\tstruct%p [label=\" if \"]\n", node);
+            break;
     }
 
     if (node->left)  progDump_node(node->left,  dmp);
@@ -183,10 +211,7 @@ static void progDump_node (prog_t* node, FILE* dmp) {
 static void seekFnc (char* *ptr) {
     char* name = (char*)calloc(1000, sizeof(char));
     while (**ptr != '\0') {
-        
-        prog_t* ret = NULL;
         block_t fnc = {0};
-        size_t len  = 0;
 
         if (checkLex("_")) {
             skipSpaces(ptr);
@@ -197,18 +222,14 @@ static void seekFnc (char* *ptr) {
             fnc.argnum = 0;
         } else if (checkLex("^")) {
             skipSpaces(ptr);
-            sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
-            len = strlen(name);
-            *ptr += len;
+            scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
             skipSpaces(ptr);
 
             fnc.isFunc = true;
             fnc.isRet  = true;    
         } else if (checkLex("*")) {
             skipSpaces(ptr);
-            sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
-            len = strlen(name);
-            *ptr += len;
+            scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
             skipSpaces(ptr);
 
             fnc.isFunc = true;
@@ -240,7 +261,7 @@ static void seekFnc (char* *ptr) {
             } else if (checkLex(",")) {
                 skipSpaces(ptr);
                 fnc.argnum++;
-                *ptr = strpbrk(*ptr ," =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n");
+                *ptr = strpbrk(*ptr ,",)");
             } else if (checkLex("$")) {
                 fnc.argnum++;
                 skipSpaces(ptr);
@@ -253,19 +274,22 @@ static void seekFnc (char* *ptr) {
         if (checkLex("{")) {
             int num = 1;
             while (num) {
+                if (**ptr == '\0'){
+                    error();
+                    break;
+                }
+
                 if (checkLex("{")) {
                     num++;
                 } else if (checkLex("}")) {
                     num--;
                 } else {
                     (*ptr)++;
-                }
+                }     
             }
-            
         } else error();
         Blocks.push_back(fnc);
     }
-        
 }
 
 vector<block_t> Compile (char* code) {
@@ -324,32 +348,49 @@ static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     skipSpaces(ptr);
     if (checkLex(";"));
     else return NULL;
+
     return newNodeCop(COP_assign, newNodeVar(newVarName), eq);
 }
 
 static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     skipSpaces(ptr);
     char* varname = (char*)calloc(1000, sizeof(char));
-    size_t len;
 
     if (checkLex("$"));
     else return NULL;
 
     skipSpaces(ptr);
     
-    sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", varname, &len); //here len = 0(?) ATTENTION
-    len = strlen(varname);
-    *ptr = *ptr + len;
-    if (!vectorSearch(vartable, varname)) error();
+    scanString(ptr, varname, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
+    if (!vectorSearch(&(Blocktable.back()->varlist), varname)) error();
 
-    vartable->push_back(getVar_t(varname));
+    Blocktable.back()->varlist.push_back(getVar_t(varname));
+    //vartable->push_back(getVar_t(varname));
     return varname;
 }
 
 static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getSum(ptr, block, vartable);
+    prog_t* ret = getAsgn(ptr, block, vartable);
     return ret;
 } 
+
+static prog_t* getAsgn (char* *ptr, block_t* block, vector<var_t>* vartable) {
+    prog_t* ret = getSum(ptr, block, vartable);
+
+    bool isWorking = true;
+    while (isWorking) {
+        isWorking = false;
+
+        skipSpaces(ptr);
+        if (checkLex("=")) {
+            isWorking = true;
+
+            ret = newNodeCop(COP_assign, ret, getSum(ptr, block, vartable));
+        }
+    }
+
+    return ret;
+}
 
 static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable) {
     prog_t* ret = getMul(ptr, block, vartable);
@@ -448,9 +489,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         return newNodeNum(num);
     }
 
-    sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
-    len = strlen(name);
-    *ptr += len;
+    if (!scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n")) return NULL;
     skipSpaces(ptr);
 
     if (checkLex("(")) { // ATTENTION
@@ -468,7 +507,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
 
         prog_t** buf = &ret;
 
-        for (size_t i = 0; i < Blocks[funcind].varlist.size(); i++) {
+        for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
             if (i == 0) {
                 skipSpaces(ptr);
                 *buf = newNodeEmpty(getEq(ptr, block, vartable), NULL);
@@ -478,7 +517,6 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
                 else error();
 
                 skipSpaces(ptr);
-                getEq(ptr, block, vartable);
 
                 *buf = newNodeEmpty(getEq(ptr, block, vartable), NULL);
             }
@@ -491,17 +529,23 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         free(name);
         if (checkLex(")")) return ret;
         else error();
-    } else {
+    } else { // PROBLEM is HERE
         bool isDeclarated = false;
 
-        for (long long i = Blocktable.size() - 1; i >= 0; i--) {
-            if (vectorSearch(&(Blocktable[i]->varlist), name)) {
+        printf("%s\n", *ptr);
+        for (size_t i = 0; i < Blocktable.size(); i++) {
+            printf("%ld\t", Blocktable[i]->varlist.size());
+        }
+        printf("\n");
+
+        /*for (size_t i = 0; i < Blocktable.size(); i++) {
+            if (vectorSearch(&(Blocktable[Blocktable.size() - 1 - i]->varlist), name)) {
                 ret = newNodeVar(name);
                 isDeclarated = true;
                 ret->ind  = i;
             }
-        }
-
+        }*/
+        
         free(name);
         if (!isDeclarated) error();
     }
@@ -510,34 +554,27 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
 }
 
 static bool getFnc (char* *ptr) {
-    return NULL;
     skipSpaces(ptr);
-
     block_t fnc = {0};
-    size_t len  = 0;
     char*  name = (char*)calloc(1000, sizeof(char));
 
     if (checkLex("_")) {
         skipSpaces(ptr);
-        strcpy(name, "_name");
+        strcpy(name, "_main");
 
         fnc.isFunc = true;
         fnc.isRet  = false;
         fnc.argnum = 0;
     } else if (checkLex("^")) {
         skipSpaces(ptr);
-        sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
-        len = strlen(name);
-        *ptr += len;
+        scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
         skipSpaces(ptr);
-
+        
         fnc.isFunc = true;
         fnc.isRet  = true;    
     } else if (checkLex("*")) {
         skipSpaces(ptr);
-        sscanf(*ptr, "%[^ =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n]%ln", name, &len); // attention
-        len = strlen(name);
-        *ptr += len;
+        scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
         skipSpaces(ptr);
 
         fnc.isFunc = true;
@@ -563,30 +600,145 @@ static bool getFnc (char* *ptr) {
     else error();
 
     for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
+        if (i != 0) {
+            skipSpaces(ptr);
+            if (checkLex(",")) ;
+            else error();
+        }
+
         if (startVar(ptr, &Blocks[funcind], &Blocks[funcind].varlist));
         else error();
-
+        
         skipSpaces(ptr);
-        if ((i != Blocks[funcind].argnum - 1) && checkLex(","));
-        else error(); 
     }
 
     skipSpaces(ptr);
     if (checkLex(")")) ;
     else error();
 
+    Blocktable.push_back(&Blocks[funcind]);
+
     skipSpaces(ptr);
     if (checkLex("{")) ;
     else error();
 
-    //
+    bool isWorking = true;
+    prog_t** buf = &Blocks[funcind].body;
+
+    while (isWorking) {
+        isWorking = false;
+
+        *buf = getLine(ptr, &Blocks[funcind], &Blocks[funcind].varlist);
+        if (*buf) {
+            isWorking = true;
+        } else {
+            break;
+        }
+
+        *buf = newNodeEmpty(*buf, NULL);
+        buf = &((*buf)->right);
+    }
 
     skipSpaces(ptr);
     if (checkLex("}")) ;
     else error();
 
-    Blocktable.push_back(&Blocks[funcind]);
+    Blocktable.pop_back();
 
     return true;
 }
 
+static prog_t* getLine (char* *ptr, block_t* block, vector<var_t>* vartable) {
+    prog_t* ret = NULL;
+
+    ret = getVar(ptr, block, vartable);
+    if (ret) return ret;
+
+    ret = getEqL(ptr, block, vartable);
+    if (ret) return ret;
+
+    ret = getBlock(ptr, block, vartable);
+    if (ret) return ret;
+
+    ret = getIf(ptr, block, vartable);
+    if (ret) return ret;
+
+    return NULL;
+}
+
+static prog_t* getEqL (char* *ptr, block_t* block, vector<var_t>* vartable) {
+    prog_t* ret = getEq(ptr, block, vartable);
+
+    skipSpaces(ptr);
+    if (checkLex(";")) ;
+    else error();
+
+    return ret;
+}
+
+static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable) {
+    skipSpaces(ptr);
+    prog_t* ret = NULL;
+
+    if (checkLex("{")) {
+        block_t newBlock = {0};
+        newBlock.isFunc = false;
+        newBlock.isRet  = false;
+        newBlock.name   = NULL;
+        newBlock.varlist.begin();
+
+        Blocks.push_back(newBlock);
+        size_t blockind = Blocks.size() - 1;
+        Blocktable.push_back(&Blocks.back());
+
+        bool isWorking = true;
+        prog_t** buf = &Blocks[blockind].body;
+
+        while (isWorking) {
+            isWorking = false;
+            prog_t* line = getLine(ptr, &Blocks[blockind], &Blocks[blockind].varlist);
+            if (line) {
+                isWorking = true;
+            } else {
+                break;
+            }
+            *buf = newNodeEmpty(line, NULL);
+            buf = &((*buf)->right);
+        }
+
+        if (checkLex("}")) ;
+        else error();
+
+        Blocktable.pop_back();
+        ret = newNodeCll(blockind, 0);
+    }
+    
+    return ret;
+}
+
+static prog_t* getIf (char* *ptr, block_t* block, vector<var_t>* vartable) {
+    skipSpaces(ptr);
+    prog_t* ret = NULL;
+
+    if (checkLex("?")) {
+        skipSpaces(ptr);
+        if (checkLex("(")) ;
+        else error();
+
+        ret = newNodeCode(CODE_if, getEq(ptr, block, vartable), NULL);
+
+        skipSpaces(ptr);
+        if (checkLex(")")) ;
+        else error();
+
+        prog_t* buf = getLine(ptr, block, vartable);
+        ret->right = newNodeEmpty(buf, NULL);
+        
+        skipSpaces(ptr);
+        if (checkLex(":")) {
+            ret->right->right = getLine(ptr, block, vartable);
+        }
+    }
+
+    return ret;
+}
