@@ -5,9 +5,16 @@
 #include <string.h>
 
 int main () {
-    char* code = (char*)calloc(10000, sizeof(char));
-    strcpy(code, " $s1 = 0; _(){$s2 = 4; {$s2=2;}}");
-   
+
+    FILE* file = fopen("test.code", "r");
+    fseek(file, 0, SEEK_END);
+    long fsize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char* code = (char*)calloc(fsize + 1, sizeof(char)); 
+    fread(code, fsize, 1, file);
+
+    fclose(file);
+
     progDump(Compile(code));
     return 0;
 }

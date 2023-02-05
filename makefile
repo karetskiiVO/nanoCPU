@@ -2,7 +2,7 @@
 CC = g++
  
 #flags:
-CFLAGS  = -g -Wall
+CFLAGS  = -g -Wall -Wextra
  
 #sources of input
 SOURCES = main.cpp  Slang.cpp

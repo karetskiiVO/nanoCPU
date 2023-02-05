@@ -3,10 +3,8 @@
 
 #include <stdbool.h>
 #include <vector>
-#include <stack>
 
 using std::vector;
-using std::stack;
 
 enum CODE_TYPE {
     CODE_num  ,
@@ -14,10 +12,11 @@ enum CODE_TYPE {
     CODE_var  , ////
     CODE_if   ,
     CODE_while,
-    CODE_for  , ////
     CODE_e    ,
     CODE_block,
     CODE_ret  ,
+    CODE_in   ,
+    CODE_out  ,
 };
 
 enum COP_TYPE {

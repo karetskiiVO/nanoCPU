@@ -1,0 +1,19 @@
+$boba = 1 + 3;
+
+_() {
+    boba = 12;
+    ? (3 + 2) {
+        boba = 4;
+    } :? (boba) {
+        $aboba = boba;
+    } : boba = 32;
+
+    ~(boba) {
+        boba = boba + 1;
+    }
+}
+
+^f($s1, $s2) {
+    ?(s1 - s2) boba = s1 / s2;
+    : f(s2, s2 - s1);
+}
