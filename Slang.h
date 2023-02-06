@@ -63,6 +63,13 @@ typedef struct var_t {
     char* name;
 } var_t;
 
+typedef struct err_t {
+    char* errptr;
+    const char* errtxt;
+} err_t;
+
+char* getCode (const char* filename);
+
 void progDump (vector<block_t> blocklist);
 
 vector<block_t> Compile (char* code);

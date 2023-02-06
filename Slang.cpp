@@ -6,13 +6,13 @@
 #include <stdlib.h>
 
 static vector<block_t> Blocks; // vector of blocks
-//static vector<vector<var_t>*> Vartable;
 static vector<size_t> Blocktable; // stack of now blocks
+static vector<err_t>  Errors;  // vector of errors
 
 #define debugprint printf("%s\t%s\n", __PRETTY_FUNCTION__, *ptr)
 #define strCpy(org,src) org = (char*)calloc(strlen(src) + 1, sizeof(char)); strcpy(org, src)
-#define checkLex(_lex) (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex))
-#define error()
+#define checkLex(_lex) ((startcode = *ptr) && (!strncmp(_lex, (*ptr), strlen(_lex))) && ((*ptr) += strlen(_lex)))
+#define error(text) Errors.push_back({startcode, text})
 
 static int scanString (char* *origin, char* str, const char* ignore) {
     size_t len = strpbrk(*origin, ignore) - *origin;
@@ -109,23 +109,24 @@ static void progDump_edge (prog_t* node, FILE* dmp);
 static const char* dump_operation (COP_TYPE type);
 static void progDump_node (prog_t* node, FILE* dmp);
 static vector<block_t> getProgramm (char* *ptr);
-static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable);
-static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getAsgn (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getMul (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getPow (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getBrk (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getVar (char* *ptr);
+static char* startVar (char* *ptr);
+static prog_t* getEq (char* *ptr);
+static prog_t* getAsgn (char* *ptr);
+static prog_t* getSum (char* *ptr);
+static prog_t* getMul (char* *ptr);
+static prog_t* getPow (char* *ptr);
+static prog_t* getBrk (char* *ptr);
+static prog_t* getVarCll (char* *ptr);
 static bool getFnc (char* *ptr);
-static prog_t* getLine (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getEqL (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getIf (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getWhile (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getRet (char* *ptr, block_t* block, vector<var_t>* vartable);
-static prog_t* getInOut (char* *ptr, block_t* block, vector<var_t>* vartable);
+static prog_t* getLine (char* *ptr);
+static prog_t* getEqL (char* *ptr);
+static prog_t* getBlock (char* *ptr);
+static prog_t* getIf (char* *ptr);
+static prog_t* getWhile (char* *ptr);
+static prog_t* getRet (char* *ptr);
+static prog_t* getInOut (char* *ptr);
+static void printErrors (const char* code);
 
 void progDump (vector<block_t> blocklist) {
     FILE* dmp = fopen("test.dot", "w"); // rewrite this sh!t
@@ -227,9 +228,10 @@ static void progDump_node (prog_t* node, FILE* dmp) {
 }
 
 static void seekFnc (char* *ptr) {
+    char* startcode = *ptr;
     char* name = (char*)calloc(1000, sizeof(char));
     while (**ptr != '\0') {
-        block_t fnc = {0};
+        block_t fnc;
 
         if (checkLex("_")) {
             skipSpaces(ptr);
@@ -264,12 +266,13 @@ static void seekFnc (char* *ptr) {
                 isDeclarated = true;
             }
         }
-        if (isDeclarated) error();
-        
+        if (isDeclarated) {
+            error("Double definition of function");
+        }
 
         if (checkLex("(")) ;
         else {
-            error();
+            error("expected (");
         }
 
         bool isWorking = true;
@@ -287,7 +290,7 @@ static void seekFnc (char* *ptr) {
                 skipSpaces(ptr);
                 *ptr = strpbrk(*ptr ," =-+*/$;&!@#%(){}[]?<>,.~`'\"\t\r\n");
             } else {
-                error();
+                error("expected ( or , or new var definition");
             }
         }
         
@@ -297,7 +300,7 @@ static void seekFnc (char* *ptr) {
             int num = 1;
             while (num) {
                 if (**ptr == '\0'){
-                    error();
+                    error("expected }");
                     break;
                 }
 
@@ -310,7 +313,7 @@ static void seekFnc (char* *ptr) {
                 }     
             }
         } else {
-            error();
+            error("expected {");
         }
         Blocks.push_back(fnc);
     }
@@ -326,12 +329,14 @@ vector<block_t> Compile (char* code) {
     Blocks.push_back(globalblock);
 
     char* buf = code;
-    seekFnc(&code);
-    return getProgramm(&buf);
+    seekFnc(&buf);
+    buf = code;
+    vector<block_t> prog = getProgramm(&buf);
+    printErrors(code);
+    return prog;
 }
 
 static vector<block_t> getProgramm (char* *ptr) {
-    //Vartable.push_back(&Blocks[0].varlist);
     Blocktable.push_back(0);
 
     Blocks[0].body = NULL;
@@ -340,7 +345,7 @@ static vector<block_t> getProgramm (char* *ptr) {
     while (isWorking) {
         isWorking = false;
 
-        prog_t* newVar = getVar(ptr, &Blocks[0], &(Blocks[Blocktable.back()].varlist));
+        prog_t* newVar = getVar(ptr);
         if (newVar) {
             isWorking = true;
 
@@ -356,15 +361,16 @@ static vector<block_t> getProgramm (char* *ptr) {
     return Blocks;
 }
 
-static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getVar (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
-    char* newVarName = startVar(ptr, block, vartable);
+    char* newVarName = startVar(ptr);
     if (!newVarName) return NULL;
 
     prog_t* eq = NULL;
     skipSpaces(ptr);
     if (checkLex("=")) {
-        eq = getEq(ptr, block, vartable); /// PROBLEM
+        eq = getEq(ptr); /// PROBLEM
     } else {
         eq = newNodeNum(0);
     }
@@ -376,7 +382,8 @@ static prog_t* getVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     return newNodeCop(COP_assign, newNodeVar(newVarName), eq);
 }
 
-static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static char* startVar (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     char* varname = (char*)calloc(1000, sizeof(char));
 
@@ -386,20 +393,23 @@ static char* startVar (char* *ptr, block_t* block, vector<var_t>* vartable) {
     skipSpaces(ptr);
     
     scanString(ptr, varname, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n");
-    if (!vectorSearch(&(Blocks[Blocktable.back()].varlist), varname)) error();
+    if (vectorSearch(&(Blocks[Blocktable.back()].varlist), varname)) {
+        error("double definition of variable");
+    }
 
     Blocks[Blocktable.back()].varlist.push_back(getVar_t(varname));
-    //vartable->push_back(getVar_t(varname));
     return varname;
 }
 
-static prog_t* getEq (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getAsgn(ptr, block, vartable);
+static prog_t* getEq (char* *ptr) {
+    prog_t* ret = getAsgn(ptr);
     return ret;
 } 
 
-static prog_t* getAsgn (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getSum(ptr, block, vartable);
+static prog_t* getAsgn (char* *ptr) {
+    char* startcode = *ptr;
+    prog_t* ret = getSum(ptr);
+    prog_t** buf = &ret;
 
     bool isWorking = true;
     while (isWorking) {
@@ -409,15 +419,20 @@ static prog_t* getAsgn (char* *ptr, block_t* block, vector<var_t>* vartable) {
         if (checkLex("=")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_assign, ret, getSum(ptr, block, vartable));
+            *buf = newNodeCop(COP_assign,  *buf, getSum(ptr));
+            if ((*buf)->left->node_type != CODE_var) {
+                error("left expression must be modeifyable");
+            }
+            buf = &((*buf)->right);
         }
     }
 
     return ret;
 }
 
-static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getMul(ptr, block, vartable);
+static prog_t* getSum (char* *ptr) {
+    char* startcode = *ptr;
+    prog_t* ret = getMul(ptr);
 
     bool isWorking = true;
     while (isWorking) {
@@ -427,22 +442,23 @@ static prog_t* getSum (char* *ptr, block_t* block, vector<var_t>* vartable) {
         if (checkLex("+")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_add, ret, getMul(ptr, block, vartable));
+            ret = newNodeCop(COP_add, ret, getMul(ptr));
         }
 
         skipSpaces(ptr);
         if (checkLex("-")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_sub, ret, getMul(ptr, block, vartable));
+            ret = newNodeCop(COP_sub, ret, getMul(ptr));
         }
     }
 
     return ret;
 }
 
-static prog_t* getMul (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getPow(ptr, block, vartable);
+static prog_t* getMul (char* *ptr) {
+    char* startcode = *ptr;
+    prog_t* ret = getPow(ptr);
 
     bool isWorking = true;
     while (isWorking) {
@@ -452,22 +468,23 @@ static prog_t* getMul (char* *ptr, block_t* block, vector<var_t>* vartable) {
         if (checkLex("*")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_mul, ret, getPow(ptr, block, vartable));
+            ret = newNodeCop(COP_mul, ret, getPow(ptr));
         }
 
         skipSpaces(ptr);
         if (checkLex("/")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_div, ret, getPow(ptr, block, vartable));
+            ret = newNodeCop(COP_div, ret, getPow(ptr));
         }
     }
 
     return ret;
 }
 
-static prog_t* getPow (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getBrk(ptr, block, vartable);
+static prog_t* getPow (char* *ptr) {
+    char* startcode = *ptr;
+    prog_t* ret = getBrk(ptr);
 
     bool isWorking = true;
     while (isWorking) {
@@ -477,33 +494,35 @@ static prog_t* getPow (char* *ptr, block_t* block, vector<var_t>* vartable) {
         if (checkLex("^")) {
             isWorking = true;
 
-            ret = newNodeCop(COP_pow, ret, getBrk(ptr, block, vartable));
+            ret = newNodeCop(COP_pow, ret, getBrk(ptr));
         }
     }
 
     return ret;
 }
 
-static prog_t* getBrk (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getBrk (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
     if (checkLex("(")) {
-        ret = getEq(ptr, block, vartable);
+        ret = getEq(ptr);
 
         skipSpaces(ptr);
         if (checkLex(")"));
         else {
-            error();
+            error("expected )");
         }
     } else {
-        ret = getVarCll(ptr, block, vartable);
+        ret = getVarCll(ptr);
     }
 
     return ret;
 }
 
-static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getVarCll (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     size_t len = 0;
     prog_t* ret = NULL;
@@ -518,7 +537,7 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
     if (!scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n")) return NULL;
     skipSpaces(ptr);
 
-    if (checkLex("(")) { // ATTENTION
+    if (checkLex("(")) { 
         bool isDeclarated = false;
         size_t funcind = 0;
 
@@ -529,24 +548,26 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
             }
         }
 
-        if (!isDeclarated) error();
+        if (!isDeclarated) {
+            error("variable is unexpected");
+        }
 
         prog_t** buf = &ret;
 
         for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
             if (i == 0) {
                 skipSpaces(ptr);
-                *buf = newNodeEmpty(getEq(ptr, block, vartable), NULL);
+                *buf = newNodeEmpty(getEq(ptr), NULL);
             } else {
                 skipSpaces(ptr);
                 if (checkLex(","));
                 else {
-                    error();
+                    error("expected ,");
                 }
 
                 skipSpaces(ptr);
 
-                *buf = newNodeEmpty(getEq(ptr, block, vartable), NULL);
+                *buf = newNodeEmpty(getEq(ptr), NULL);
             }
 
             buf = &((*buf)->right);
@@ -557,16 +578,10 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         free(name);
         if (checkLex(")")) return ret;
         else {
-            error();
+            error("expected )");
         }
-    } else { // PROBLEM is HERE
+    } else { 
         bool isDeclarated = false;
-
-        /*printf("%s\n", name);
-        for (size_t i = 0; i < Blocktable.size(); i++) {
-            printf("%ld\t", Blocktable[i]->varlist.size());
-        }
-        printf("\n");*/
 
         for (size_t i = 0; i < Blocktable.size(); i++) {
             if (vectorSearch(&(Blocks[Blocktable[Blocktable.size() - i - 1]].varlist), name)) {
@@ -577,15 +592,18 @@ static prog_t* getVarCll (char* *ptr, block_t* block, vector<var_t>* vartable) {
         }
         
         free(name);
-        if (!isDeclarated) error();
+        if (!isDeclarated) {
+            error("variable is not declarated");
+        }
     }
 
     return ret;
 }
 
 static bool getFnc (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
-    block_t fnc = {0};
+    block_t fnc;
     char*  name = (char*)calloc(1000, sizeof(char));
 
     if (checkLex("_")) {
@@ -623,12 +641,14 @@ static bool getFnc (char* *ptr) {
         }
     }
     
-    if (!funcind) error();
+    if (!funcind) {
+        error("function undefinded");
+    }
 
     skipSpaces(ptr);
     if (checkLex("(")) ;
     else {
-        error();
+        error("expected )");
     }
 
     for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
@@ -636,13 +656,13 @@ static bool getFnc (char* *ptr) {
             skipSpaces(ptr);
             if (checkLex(",")) ;
             else {
-            error();
+            error("expected ,");
         }
         }
 
-        if (startVar(ptr, &Blocks[funcind], &Blocks[funcind].varlist));
+        if (startVar(ptr));
         else {
-            error();
+            error("expected definition of new var");
         }
         
         skipSpaces(ptr);
@@ -651,7 +671,7 @@ static bool getFnc (char* *ptr) {
     skipSpaces(ptr);
     if (checkLex(")")) ;
     else {
-        error();
+        error("expected )");
     }
 
     Blocktable.push_back(funcind);
@@ -659,7 +679,7 @@ static bool getFnc (char* *ptr) {
     skipSpaces(ptr);
     if (checkLex("{")) ;
     else {
-        error();
+        error("expected {");
     }
 
     bool isWorking = true;
@@ -668,7 +688,7 @@ static bool getFnc (char* *ptr) {
     while (isWorking) {
         isWorking = false;
 
-        *buf = getLine(ptr, &Blocks[funcind], &Blocks[funcind].varlist);
+        *buf = getLine(ptr);
         if (*buf) {
             isWorking = true;
         } else {
@@ -682,7 +702,7 @@ static bool getFnc (char* *ptr) {
     skipSpaces(ptr);
     if (checkLex("}")) ;
     else {
-        error();
+        error("expected }");
     }
 
     Blocktable.pop_back();
@@ -690,51 +710,55 @@ static bool getFnc (char* *ptr) {
     return true;
 }
 
-static prog_t* getLine (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getLine (char* *ptr) {
     prog_t* ret = NULL;
 
-    ret = getVar(ptr, block, vartable);
+    ret = getVar(ptr);
     if (ret) return ret;
 
-    ret = getEqL(ptr, block, vartable);
+    ret = getEqL(ptr);
     if (ret) return ret;
 
-    ret = getBlock(ptr, block, vartable);
+    ret = getBlock(ptr);
     if (ret) return ret;
 
-    ret = getIf(ptr, block, vartable);
+    ret = getIf(ptr);
     if (ret) return ret;
 
-    ret = getWhile(ptr, block, vartable);
+    ret = getWhile(ptr);
     if (ret) return ret;
 
-    ret = getRet(ptr, block, vartable);
+    ret = getRet(ptr);
     if (ret) return ret;
 
-    ret = getInOut(ptr, block, vartable);
+    ret = getInOut(ptr);
     if (ret) return ret;
 
     return NULL;
 }
 
-static prog_t* getEqL (char* *ptr, block_t* block, vector<var_t>* vartable) {
-    prog_t* ret = getEq(ptr, block, vartable);
+static prog_t* getEqL (char* *ptr) {
+    char* startcode = *ptr;
+    prog_t* ret = getEq(ptr);
+
+    if (!ret) return NULL;
 
     skipSpaces(ptr);
     if (checkLex(";")) ;
     else {
-        error();
+        error("expected ;");
     }
 
     return ret;
 }
 
-static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getBlock (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
     if (checkLex("{")) {
-        block_t newBlock = {0};
+        block_t newBlock;
         newBlock.isFunc = false;
         newBlock.isRet  = false;
         newBlock.name   = NULL;
@@ -749,7 +773,7 @@ static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable) {
 
         while (isWorking) {
             isWorking = false;
-            prog_t* line = getLine(ptr, &Blocks[blockind], &Blocks[blockind].varlist);
+            prog_t* line = getLine(ptr);
             if (line) {
                 isWorking = true;
             } else {
@@ -761,7 +785,7 @@ static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable) {
 
         if (checkLex("}")) ;
         else {
-            error();
+            error("expected }");
         }
 
         Blocktable.pop_back();
@@ -771,7 +795,8 @@ static prog_t* getBlock (char* *ptr, block_t* block, vector<var_t>* vartable) {
     return ret;
 }
 
-static prog_t* getIf (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getIf (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
@@ -779,30 +804,31 @@ static prog_t* getIf (char* *ptr, block_t* block, vector<var_t>* vartable) {
         skipSpaces(ptr);
         if (checkLex("(")) ;
         else {
-            error();
+            error("expected (");
         }
 
-        ret = newNodeCode(CODE_if, getEq(ptr, block, vartable), NULL);
+        ret = newNodeCode(CODE_if, getEq(ptr), NULL);
 
         skipSpaces(ptr);
         if (checkLex(")")) ;
         else {
-            error();
+            error("expected )");
         }
 
-        prog_t* buf = getLine(ptr, block, vartable);
+        prog_t* buf = getLine(ptr);
         ret->right = newNodeEmpty(buf, NULL);
         
         skipSpaces(ptr);
         if (checkLex(":")) {
-            ret->right->right = getLine(ptr, block, vartable);
+            ret->right->right = getLine(ptr);
         }
     }
 
     return ret;
 }
 
-static prog_t* getWhile (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getWhile (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
@@ -810,24 +836,25 @@ static prog_t* getWhile (char* *ptr, block_t* block, vector<var_t>* vartable) {
         skipSpaces(ptr);
         if (checkLex("(")) ;
         else {
-            error();
+            error("expected (");
         }
 
-        ret = newNodeCode(CODE_while, getEq(ptr, block, vartable), NULL);
+        ret = newNodeCode(CODE_while, getEq(ptr), NULL);
 
         skipSpaces(ptr);
         if (checkLex(")")) ;
         else {
-            error();
+            error("expected )");
         }
 
-        ret->right = getLine(ptr, block, vartable);
+        ret->right = getLine(ptr);
     }
 
     return ret;
 }
 
-static prog_t* getRet (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getRet (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
@@ -835,46 +862,80 @@ static prog_t* getRet (char* *ptr, block_t* block, vector<var_t>* vartable) {
         ret = newNodeCode(CODE_ret, NULL, NULL);
 
         if (Blocks[Blocktable[1]].isRet) {
-            ret->left = getEq(ptr, block, vartable);
+            ret->left = getEq(ptr);
         }
         
         skipSpaces(ptr);
         if (checkLex(";")) ;
         else {
-            error();
+            error("expected ;");
         }
     }
 
     return ret;
 }
 
-static prog_t* getInOut (char* *ptr, block_t* block, vector<var_t>* vartable) {
+static prog_t* getInOut (char* *ptr) {
+    char* startcode = *ptr;
     skipSpaces(ptr);
     prog_t* ret = NULL;
 
     if (checkLex(">>")) {
-        ret = newNodeCode(CODE_in, getEq(ptr, block, vartable), NULL);
-
+        ret = newNodeCode(CODE_in, getEq(ptr), NULL);
+        
+        if (ret->left) {
+            error("expected var in assign");
+        }
+        
         skipSpaces(ptr);
         if (checkLex(";")) ;
         else {
-            error();
+            error("expected ;");
         }
 
         return ret;
     }
 
     if (checkLex("<<")) {
-        ret = newNodeCode(CODE_out, getEq(ptr, block, vartable), NULL);
+        ret = newNodeCode(CODE_out, getEq(ptr), NULL);
 
         skipSpaces(ptr);
         if (checkLex(";")) ;
         else {
-            error();
+            error("expected ;");
         }
 
         return ret;
     }
 
     return ret;
+}
+
+char* getCode (const char* filename) {
+    FILE* file = fopen(filename, "r");
+    fseek(file, 0, SEEK_END);
+    size_t fsize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char* code = (char*)calloc(fsize + 1, sizeof(char)); 
+    fread(code, fsize, 1, file);
+    fclose(file);
+
+    return code;
+}
+
+static void printErrors (const char* code) {
+    for (size_t i = 0; i < Errors.size(); i++) {
+        char* startPrinting = Errors[i].errptr;
+        char* endPrinting   = Errors[i].errptr;
+
+        for (; *startPrinting != '\n' && startPrinting - code > 0; startPrinting--);
+        for (; *endPrinting   != '\n' && *endPrinting != '\0';     endPrinting++);
+
+        if (startPrinting != code) startPrinting++;
+
+        for (char* ch = startPrinting; ch < endPrinting; ch++) putchar(*ch);
+        putchar('\n');
+        for (long j = 0; j < Errors[i].errptr - startPrinting; j++) putchar('~');
+        printf("^\n%s\n\n---------------------------------------------\n", Errors[i].errtxt);
+    }
 }
