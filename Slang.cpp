@@ -551,6 +551,9 @@ static prog_t* getVarCll (char* *ptr) {
         if (!isDeclarated) {
             error("variable is unexpected");
         }
+        if (!Blocks[funcind].isRet) {
+            error("function must have returnable");
+        }
 
         prog_t** buf = &ret;
 
@@ -595,6 +598,85 @@ static prog_t* getVarCll (char* *ptr) {
         if (!isDeclarated) {
             error("variable is not declarated");
         }
+    }
+
+    return ret;
+}
+
+static prog_t* getVoidCll (char* *ptr) {
+    prog_t* ret = NULL;
+    char* startcode = *ptr;
+    char* bufptr = *ptr;
+    
+    char* name = (char*)calloc(1000, sizeof(char));
+
+    skipSpaces(ptr);
+    if (!scanString(ptr, name, "^ ,.=-+*/$;&!@#%(){}[]?<>~`'\"\t\r\n")) {
+        *ptr = bufptr;
+        free(name);
+        return NULL;
+    }    
+    skipSpaces(ptr);
+    if (checkLex("(")) { 
+        bool isDeclarated = false;
+        size_t funcind = 0;
+
+        for (size_t i = 0; i < Blocks.size(); i++) {
+            if (Blocks[i].isFunc && !strcmp(Blocks[i].name, name)) {
+                isDeclarated = true;
+                funcind = i;
+            }
+        }
+
+        if (!isDeclarated) {
+            error("variable is unexpected");
+        }
+        
+        if (Blocks[funcind].isRet) {
+            *ptr = bufptr;
+            free(name);
+            return NULL;
+        }
+
+        prog_t** buf = &ret;
+
+        for (size_t i = 0; i < Blocks[funcind].argnum; i++) {
+            if (i == 0) {
+                skipSpaces(ptr);
+                *buf = newNodeEmpty(getEq(ptr), NULL);
+            } else {
+                skipSpaces(ptr);
+                if (checkLex(","));
+                else {
+                    error("expected ,");
+                }
+
+                skipSpaces(ptr);
+
+                *buf = newNodeEmpty(getEq(ptr), NULL);
+            }
+
+            buf = &((*buf)->right);
+        }   
+
+        ret = newNodeCll(funcind, ret);
+        
+        free(name);
+        skipSpaces(ptr);
+        if (checkLex(")"));
+        else {
+            error("expected )");
+        }
+
+        skipSpaces(ptr);
+        if (checkLex(";")) ;
+        else {
+            error("expected ;");
+        }
+    } else {
+        free(name);
+        *ptr = bufptr;
+        ret = NULL;
     }
 
     return ret;
@@ -713,6 +795,12 @@ static bool getFnc (char* *ptr) {
 static prog_t* getLine (char* *ptr) {
     prog_t* ret = NULL;
 
+    ret = getRet(ptr);
+    if (ret) return ret;
+
+    ret = getVoidCll(ptr);
+    if (ret) return ret;
+
     ret = getVar(ptr);
     if (ret) return ret;
 
@@ -726,9 +814,6 @@ static prog_t* getLine (char* *ptr) {
     if (ret) return ret;
 
     ret = getWhile(ptr);
-    if (ret) return ret;
-
-    ret = getRet(ptr);
     if (ret) return ret;
 
     ret = getInOut(ptr);
@@ -863,6 +948,10 @@ static prog_t* getRet (char* *ptr) {
 
         if (Blocks[Blocktable[1]].isRet) {
             ret->left = getEq(ptr);
+
+            if (!ret->left) {
+                error("expected equateon after ^");
+            }
         }
         
         skipSpaces(ptr);
@@ -883,7 +972,7 @@ static prog_t* getInOut (char* *ptr) {
     if (checkLex(">>")) {
         ret = newNodeCode(CODE_in, getEq(ptr), NULL);
         
-        if (ret->left) {
+        if (ret->left->node_type != CODE_var) {
             error("expected var in assign");
         }
         
@@ -939,3 +1028,20 @@ static void printErrors (const char* code) {
         printf("^\n%s\n\n---------------------------------------------\n", Errors[i].errtxt);
     }
 }
+
+/*add comand getmem
+
+void makeAsmCode(vector<block_t> prog, const char* filename) {
+    FILE* file = fopen(filename, "w");
+    for (size_t blockind = 0; blockind < prog.size(); blockind++) {
+        int bufpos = 0, maxpos = 0;
+
+
+    }
+    fclose(file);
+}
+
+static void makeAsmCode (FILE* codfile, prog_t* node, int* pos, int* maxpos) {
+
+}
+*/

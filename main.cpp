@@ -7,6 +7,7 @@
 int main () {
     char* code = getCode("test.code");
 
-    progDump(Compile(code));
+    vector<block_t> prog = Compile(code);
+    progDump(prog);
     return 0;
 }
