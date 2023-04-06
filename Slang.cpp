@@ -229,7 +229,7 @@ static void progDump_node (prog_t* node, FILE* dmp) {
 
 static void seekFnc (char* *ptr) {
     char* startcode = *ptr;
-    char* name = (char*)calloc(1000, sizeof(char));
+    char* name = (char*)calloc(1000, sizeof(char)); // here
     while (**ptr != '\0') {
         block_t fnc;
 
@@ -351,6 +351,7 @@ static vector<block_t> getProgramm (char* *ptr) {
 
             *buf = newNodeEmpty(newVar, NULL);
             buf = &((*buf)->right);
+            continue;
         }
 
         if (getFnc(ptr)) {
